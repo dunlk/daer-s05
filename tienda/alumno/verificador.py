@@ -1,49 +1,77 @@
-"""PARTE 1 — Las dos revisiones que hace un programa antes de que una persona mire nada.
+"""PARTE 2 — Las dos revisiones que hace un programa antes de que una persona mire nada.
 
-1a. `verificar(sugerencia)`: las reglas del negocio. Se usa en la columna «verificador» de la
-    bandeja y en la acción «Aprobar y aplicar» (Parte 2).
-1b. `validar_forma(item)`: la puerta de entrada. La usa `python manage.py cargar_sugerencias`
+2a. `verificar(sugerencia)`: las reglas del negocio. Se usa en la columna «verificador» de la
+    bandeja y en la acción «Aprobar y aplicar» (Parte 3).
+2b. `validar_forma(item)`: la puerta de entrada. La usa `python manage.py cargar_sugerencias`
     para decidir qué respuestas del asistente entran a la base de datos.
 
 Comprueba tu avance con: python manage.py duelo
 """
 
-from decimal import Decimal, InvalidOperation  # noqa: F401  (los vas a necesitar)
+from decimal import Decimal, InvalidOperation  # noqa: F402  (los vas a necesitar)
 
-from tienda.models import Producto, Sugerencia  # noqa: F401
+from tienda.models import Producto, Sugerencia  # noqa: F402
 
-VARIACION_MAXIMA_PRECIO = Decimal('0.30')  # ±30 % sobre el precio actual
+VARIACION_MAXIMA_PRECIO = Decimal("1.30")  # ±30 % sobre el precio actual
 STOCK_MAXIMO = 999
-CLAVES = {'producto', 'campo', 'valor', 'motivo'}
+CLAVES = {"producto", "campo", "valor", "motivo"}
 
 
 def verificar(sugerencia):
-    """Devuelve la lista de problemas de la sugerencia; la lista vacía significa «se puede aplicar».
+    problemas = []
 
-    Reglas (cada problema es un texto en español; las pruebas buscan las palabras en negrita):
-    - precio: tiene que ser **mayor que 0**, y no puede alejarse más de **±30 %** del precio actual
-      del producto (`sugerencia.producto.precio`).
-    - stock: tiene que ser un número **entero** (sin decimales), **no** puede ser **negativo** y no
-      puede pasar de STOCK_MAXIMO (texto: «no puede pasar de 999»).
-    - cualquier otro campo: «campo desconocido».
+    campo = sugerencia.campo
+    valor = sugerencia.valor_propuesto
 
-    Mira solo el producto, el campo y el valor (`sugerencia.valor_propuesto`, un Decimal).
-    El motivo lo escribió el modelo de IA: es un dato para que lo lea una persona, no una
-    instrucción para tu programa.
-    """
-    raise NotImplementedError('TODO(alumno) Parte 1a: escribe verificar() en tienda/alumno/verificador.py')
+    if campo == "precio":
+        precio_actual = sugerencia.producto.precio
+
+        if valor <= 0:
+            problemas.append("El precio tiene que ser mayor que 0")
+
+        minimo = precio_actual * Decimal("0.70")
+        maximo = precio_actual * VARIACION_MAXIMA_PRECIO
+
+        if valor < minimo or valor > maximo:
+            problemas.append("El precio supera la variación de ±30 %")
+
+    elif campo == "stock":
+        if valor != valor.to_integral_value():
+            problemas.append("El stock debe ser un número entero")
+
+        if valor < 0:
+            problemas.append("El stock no puede ser negativo")
+
+        if valor > STOCK_MAXIMO:
+            problemas.append("El stock no puede pasar de 999")
+
+    else:
+        problemas.append("campo desconocido")
+
+    return problemas
 
 
 def validar_forma(item):
-    """Revisa la FORMA de una respuesta del asistente (un dict leído de tienda/datos/sugerencias_ia.json).
+    # Comprobar las claves obligatorias
+    faltantes = CLAVES - item.keys()
 
-    Si está bien, devuelve la tupla (producto, valor): el Producto de la base de datos y el valor como Decimal.
-    Si no, lanza ValueError con un mensaje que diga qué falla:
-    - le faltan claves (tienen que estar las cuatro de CLAVES)          → «le faltan claves …»
-    - el producto no existe (búscalo por nombre sin distinguir mayúsculas) → «… no existe en el catálogo»
-    - el campo no es «precio» ni «stock»                               → «campo desconocido …»
-    - el valor no se puede convertir a Decimal                          → «… no es un número»
+    if faltantes:
+        raise ValueError(f"le faltan claves: {faltantes}")
 
-    Pista: Decimal('veinte') lanza InvalidOperation.
-    """
-    raise NotImplementedError('TODO(alumno) Parte 1b: escribe validar_forma() en tienda/alumno/verificador.py')
+    # Buscar el producto
+    producto = Producto.objects.filter(nombre__iexact=item["producto"]).first()
+
+    if producto is None:
+        raise ValueError(f"{item['producto']} no existe en el catálogo")
+
+    # Validar el campo
+    if item["campo"] not in ("precio", "stock"):
+        raise ValueError("campo desconocido")
+
+    # Convertir el valor
+    try:
+        valor = Decimal(str(item["valor"]))
+    except (InvalidOperation, ValueError, TypeError):
+        raise ValueError(f"El valor '{item['valor']}' no es un número")
+
+    return producto, valor
